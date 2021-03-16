@@ -1,0 +1,7 @@
+#data and results files
+data/
+results/
+
+#Python 
+*__pycache__
+
