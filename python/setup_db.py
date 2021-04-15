@@ -60,7 +60,7 @@ def main():
     Base.metadata.create_all(engine)
     
     # Session.configure(bind=engine)
-    # gtf_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/genome_annot/gencode_small.gtf"
+    
 
 
 if __name__ == "__main__":
