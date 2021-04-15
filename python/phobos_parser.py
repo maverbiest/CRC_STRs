@@ -23,6 +23,7 @@ class DetectorPhobosMax(repeat_detection_run.DetectorPhobos):
 
         pattern_begin = re.compile(r"(\d+) :\s+\d")
         pattern_seq = re.compile(r"(?<![0-9])([\-ACGT]+)")
+        pattern_actual_tr = re.compile(r"(?<![0-9])([\-ACGTN]+)")
         pattern_indels = re.compile(r"(?:\(([0-9]+,[DI])\))")
 
         # Our possible parser states:
@@ -65,7 +66,8 @@ class DetectorPhobosMax(repeat_detection_run.DetectorPhobos):
                 state = 3
 
             elif 3 == state:  # Find actual TR sequence
-                match = pattern_seq.search(line)
+                # match = pattern_seq.search(line)
+                match = pattern_actual_tr.search(line)
                 if match and match.groups()[0] is not None:
                     # print(" *(2->3) Found actual repeat region")
                     actual_tr = match.groups()[0]
@@ -326,12 +328,13 @@ def main():
     detector.config.valopts["--reportUnit"] = 0
     detector.config.valopts["--maxUnitLen"] = 15
 
-    input_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/test_phobos/phobos_parsing_test.txt"
+    input_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/phobos.o"
+    # input_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/test_phobos/phobos_parsing_test.txt"
     # input_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/test_phobos/avg_prot_phobos_asis.txt"
     with open(input_file, "r") as f:
         tr_list = list(detector.phobos_get_repeats(infile=f))
 
-    repeats = [repeat.Repeat(i.msa, i.begin) for i in tr_list]       
+    repeats = [repeat.Repeat(i.msa, i.begin) for i in tr_list]  
 
     repeats_l = repeat_list.RepeatList(repeats)
     for i in repeats_l.repeats:

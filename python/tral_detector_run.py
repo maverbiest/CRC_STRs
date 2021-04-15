@@ -116,7 +116,8 @@ def main():
         test_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/fasta/tiny.fa"
         # test_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/avg_protein_coding_gene.fa"
         test_output = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/"
-        detect_trs(test_path, test_output, write=False)
+        detectors = ["TRF", "XSTREAM"]
+        detect_trs(test_path, test_output, write=False, detectors=detectors)
 
 
 

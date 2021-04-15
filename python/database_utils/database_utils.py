@@ -518,11 +518,11 @@ def main():
     # updater = DatabaseUpdater(db_handle=db_handle, gtf=gtf)
     # updater.gtf_to_sqlite()
 
-    # reader = DatabaseReader(db_handle=db_handle)
-    # transcript = reader.execute_sql("SELECT ensembl_transcript FROM transcripts;", fetch=True)[0]
-    # exons = reader.get_transcript_exons(transcript=transcript, protein_coding=True)
-    # for i in exons:
-    #     print("{} -> {}".format(i[2], i[3]))
+    reader = DatabaseReader(db_handle=db_handle)
+    transcript = reader.execute_sql("SELECT ensembl_transcript FROM transcripts;", fetch=True)[0]
+    exons = reader.get_transcript_exons(transcript=transcript, protein_coding=True)
+    for i in exons:
+        print("{} -> {}".format(i[2], i[3]))
 
 
 if __name__ == "__main__":

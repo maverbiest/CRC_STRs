@@ -78,8 +78,10 @@ def detect_trs(fasta_handle, output_dir, detectors=None, write=True):
             for tr in sorted_trs:
                 if len(tr.msa) > 2 or len(tr.msa[0]) > 10:
                     if len(tr.msa[0]) <= 2:
+                        skipped_counter += 1
                         continue
-                    skipped_counter += 1
+                # else:
+                #     skipped_counter += 1                      
                 print(tr)    
         print("Skipped {} MSAs for this sequence".format(skipped_counter))
     print("""

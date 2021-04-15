@@ -77,9 +77,9 @@ def detect(sequence, lHMM=None, denovo=None, realignment='mafft', sequence_type=
         for iTR in repeats:
             if len(iTR.msa) > 2 or len(iTR.msa[0]) > 10:  # TODO: change from 2 to 3
                 # only TRs with at least 3 units with a length > 10 characters will be realigned
-                if len(iTR.msa[0]) <= 2:
-                    # Repeats with unit length 1 and 2 will not be realigned             
-                    continue    
+                # if len(iTR.msa[0]) <= 2:
+                #     # Repeats with unit length 1 and 2 will not be realigned             
+                #     continue    
                 iTR.msa = repeat_align.realign_repeat(iTR.msa,
                                                         realignment,
                                                         sequence_type,
