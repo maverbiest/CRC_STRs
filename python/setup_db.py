@@ -3,9 +3,9 @@ import argparse
 import os
 
 import gtfparse
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, CheckConstraint, Table
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from sqlalchemy import Column, Integer, String, ForeignKey
 
 Base = declarative_base()
 
@@ -13,9 +13,9 @@ class Gene(Base):
     __tablename__ = "genes"
 
     id = Column(Integer, primary_key=True)
-    ensembl_gene = Column(String, nullable=False)
+    ensembl_gene = Column(String, nullable=False, unique=True)
     chromosome = Column(String, nullable=False)
-    strand = Column(String, nullable=False)
+    strand = Column(String, CheckConstraint("strand in ('fw', 'rv')"), nullable=False)
     begin = Column(Integer, nullable=False)
     end = Column(Integer, nullable=False)    
 
@@ -29,16 +29,27 @@ class Gene(Base):
         )
 
 
+# Association table for the many to many relationship between exons and transcripts
+exons_transcripts = Table("exons_transcripts", Base.metadata,
+    Column("exon_id", ForeignKey("exons.id"), primary_key=True),
+    Column("transcript_id", ForeignKey("transcripts.id"), primary_key=True)
+)
+
 class Transcript(Base):
     __tablename__ = "transcripts"
 
     id = Column(Integer, primary_key=True)
-    ensembl_transcript = Column(String, nullable=False)
+    ensembl_transcript = Column(String, nullable=False, unique=True)
     begin = Column(Integer, nullable=False)
     end = Column(Integer, nullable=False)
 
     gene_id = Column(Integer, ForeignKey("genes.id"))
     gene = relationship("Gene", back_populates="transcripts")
+
+    # many to many Exons<->Transcripts
+    exons = relationship('Exon',
+                            secondary=exons_transcripts,
+                            back_populates='transcripts')
 
     def __repr__(self):
         return "Transcript(ensembl_transcript={}, begin={}, end={})".format(
@@ -47,21 +58,58 @@ class Transcript(Base):
             self.end
         )
 
-# Add relationship directive to Gene class
+
+# Add relationship directive to Gene class for one to many Gene -> Transcript
 Gene.transcripts = relationship("Transcript", order_by=Transcript.id, back_populates="gene")
 
+
+class Exon(Base):
+    __tablename__ = "exons"
+
+    id = Column(Integer, primary_key=True)
+    ensembl_exon = Column(String, nullable=False, unique=True)
+    begin = Column(Integer, nullable=False)
+    end = Column(Integer, nullable=False)
+    cds = Column(Boolean, nullable=False)
+    start_codon = Column(Integer)
+    stop_codon = Column(Integer)
+
+    # many to many Exons <-> Transcripts
+    transcripts = relationship('Transcript',
+                            secondary=exons_transcripts,
+                            back_populates='exons')
+
+    def __repr__(self):
+        return "Exon(ensembl_exon={}, begin={}, end={}, cds={}, start_codon={}, stop_codon={})".format(
+            self.ensembl_exon,
+            self.begin,
+            self.end,
+            self.cds,
+            self.start_codon,
+            self.stop_codon
+        )
+
+
+def cla_parser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--database", "-d", type=str, required=True, help="Handle where the (empty) database will be generated. Database can be populated using 'populate_db.py'"
+    )
+
+    return parser.parse_args()
+
 def main():
+    args = cla_parser()
+    db_handle = args.database
     db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test.db"
 
     if os.path.exists(db_handle):
-        raise ValueError("A database already exists at specified handle, exiting!")
+        raise FileExistsError("A database already exists at specified handle, exiting!")
 
-    engine = create_engine("sqlite:///{}".format(db_handle), echo = True)
+    engine = create_engine("sqlite:///{}".format(db_handle), echo=False)
     Base.metadata.create_all(engine)
     
-    # Session.configure(bind=engine)
-    
-
 
 if __name__ == "__main__":
     main()
