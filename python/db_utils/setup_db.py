@@ -3,7 +3,7 @@ import argparse
 import os
 
 import gtfparse
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, CheckConstraint, Table
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Boolean, CheckConstraint, UniqueConstraint, Table
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
@@ -35,6 +35,12 @@ exons_transcripts = Table("exons_transcripts", Base.metadata,
     Column("transcript_id", ForeignKey("transcripts.id"), primary_key=True)
 )
 
+# Association table for the many to many relationship between repeats and transcripts
+repeats_transcripts = Table("repeats_transcripts", Base.metadata,
+    Column("repeat_id", ForeignKey("repeats.id"), primary_key=True),
+    Column("transcript_id", ForeignKey("transcripts.id"), primary_key=True)
+)
+
 class Transcript(Base):
     __tablename__ = "transcripts"
 
@@ -43,6 +49,7 @@ class Transcript(Base):
     begin = Column(Integer, nullable=False)
     end = Column(Integer, nullable=False)
 
+    # one to many Gene -> Transcripts
     gene_id = Column(Integer, ForeignKey("genes.id"))
     gene = relationship("Gene", back_populates="transcripts")
 
@@ -51,13 +58,17 @@ class Transcript(Base):
                             secondary=exons_transcripts,
                             back_populates='transcripts')
 
+    # # many to many Repeats <-> Transcripts
+    repeats = relationship('Repeat',
+                            secondary=repeats_transcripts,
+                            back_populates='transcripts')
+
     def __repr__(self):
         return "Transcript(ensembl_transcript={}, begin={}, end={})".format(
             self.ensembl_transcript,
             self.begin,
             self.end
         )
-
 
 # Add relationship directive to Gene class for one to many Gene -> Transcript
 Gene.transcripts = relationship("Transcript", order_by=Transcript.id, back_populates="gene")
@@ -90,6 +101,44 @@ class Exon(Base):
         )
 
 
+class Repeat(Base):
+    __tablename__ = "repeats"
+
+    id = Column(Integer, primary_key=True)   
+    source = Column(String, nullable=True, default="unknown")  # e.g. which detector found this Repeat?
+    begin = Column(Integer, nullable=False)
+    end = Column(Integer, nullable=False)
+    l_effective = Column(Integer, nullable=False)
+    n_effective = Column(Integer, nullable=False)
+    region_length = Column(Integer, nullable=False)
+    p_value = Column(Float, nullable=False)
+    divergence = Column(Float, nullable=False)
+
+    # one to many Gene -> Repeats
+    gene_id = Column(Integer, ForeignKey("genes.id"))
+    gene = relationship("Gene", back_populates="repeats")
+
+    # many to many Repeats <-> Transcripts
+    transcripts = relationship('Transcript',
+                            secondary=repeats_transcripts,
+                            back_populates='repeats')
+
+    def __repr__(self):
+        return "Repeat(source={}, begin={}, end={}, l_effective={}, n_effective={}, region_length={}, p_value={}, divergence={})".format(
+            self.source,
+            self.begin,
+            self.end,
+            self.l_effective,
+            self.n_effective,
+            self.region_length,
+            self.p_value,
+            self.divergence
+        )
+
+# Add relationship directive to Gene class for one to many Gene -> Repeats
+Gene.repeats = relationship("Repeat", order_by=Repeat.id, back_populates="gene")
+
+
 def cla_parser():
     parser = argparse.ArgumentParser()
 
@@ -100,16 +149,17 @@ def cla_parser():
     return parser.parse_args()
 
 def main():
+    # db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test.db"
+
     args = cla_parser()
     db_handle = args.database
-    db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test.db"
+    
 
     if os.path.exists(db_handle):
         raise FileExistsError("A database already exists at specified handle, exiting!")
 
     engine = create_engine("sqlite:///{}".format(db_handle), echo=False)
     Base.metadata.create_all(engine)
-    
 
 if __name__ == "__main__":
     main()

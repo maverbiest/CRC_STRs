@@ -9,13 +9,10 @@ from sqlalchemy.exc import NoResultFound
 
 from setup_db import Gene, Transcript, Exon
 
-# Session = sessionmaker()
 
 def get_genome_annotations(gtf_handle, protein_coding=True):
     """ Parsing and optional filtering of gtf genome annotation file into pd.DataFrame
     """
-    if not os.path.exists(gtf_handle):
-        raise FileNotFoundError("No gtf genome annotation file was found at specified handle")
     gtf_df = gtfparse.read_gtf(gtf_handle)
 
     if protein_coding:
@@ -27,7 +24,7 @@ def get_genome_annotations(gtf_handle, protein_coding=True):
 
 def add_genes(session, gtf_df):
     """ Get desired field values for all genes from a gtf data frame. For each gene in the gtf file,
-    create a setup_db.Gene instance. Finally, add all encountered Genes to the session
+    create a Gene instance. Finally, add all encountered Genes to the session
 
     Parameters 
     session:        A SQLAlchemy session that is connected to a database where information from the genome
@@ -37,27 +34,22 @@ def add_genes(session, gtf_df):
                     using gtfparse.read_gtf()
     """
     gene_list = []
-    features = ["gene_id", "seqname", "strand", "start", "end"]
     for index, row in gtf_df.loc[(gtf_df["feature"] == "gene")].iterrows():
-        # Create dictionary mapping features to values, may be excessive however it will prevent 
-        ## accessing the strand value by index later as it needs to be modified
-        values = {feature: row[feature] for feature in features}
+        gene = Gene(
+                ensembl_gene = row["gene_id"],
+                chromosome = row["seqname"],
+                begin = row["start"],
+                end = row["end"]
+            )
         # Strands are listed as '+' and '-' in gtf files
-        if values["strand"] == "+":
-            values["strand"] = "fw"
-        elif values["strand"] == "-":
-            values["strand"] = "rv"
+        if row["strand"] == "+":
+            gene.strand = "fw"
+        elif row["strand"] == "-":
+            gene.strand = "rv"
         else:
             raise ValueError("Unknown strand identifier encountered, gtf indexes may be off")
-        gene_list.append(
-            Gene(
-                ensembl_gene = values["gene_id"],
-                chromosome = values["seqname"],
-                strand = values["strand"],
-                begin = values["start"],
-                end = values["end"]
-            )
-        )
+        gene_list.append(gene)
+
     session.add_all(gene_list)
 
 
@@ -145,8 +137,6 @@ def main():
     args = cla_parser()
     db_handle = args.database
     gtf_handle = args.gtf
-    # db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test.db"
-    # gtf_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/genome_annot/gencode_small.gtf"
 
     # check if database exists
     if not os.path.exists(db_handle):
@@ -171,7 +161,6 @@ def main():
 
     # commit
     session.commit()
-
 
 if __name__ == "__main__":
     main()
