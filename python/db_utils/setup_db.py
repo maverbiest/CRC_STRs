@@ -53,7 +53,7 @@ class Transcript(Base):
     gene_id = Column(Integer, ForeignKey("genes.id"))
     gene = relationship("Gene", back_populates="transcripts")
 
-    # many to many Exons<->Transcripts
+    # many to many Exons <-> Transcripts
     exons = relationship('Exon',
                             secondary=exons_transcripts,
                             back_populates='transcripts')
@@ -153,7 +153,6 @@ def main():
 
     args = cla_parser()
     db_handle = args.database
-    
 
     if os.path.exists(db_handle):
         raise FileExistsError("A database already exists at specified handle, exiting!")

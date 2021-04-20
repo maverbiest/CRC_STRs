@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
+"""
+Calculate divergence and p-values for repeats from all pickled repeatlists in a directory.
+Serialize scored repeats again.
+"""
 
 import argparse
+import os
 import pickle
-import time
 
-# from tral_detector_run import check_output_dir
+from tral.repeat_list.repeat_list import RepeatList
+
 
 def cla_parser():
     parser = argparse.ArgumentParser()
@@ -13,43 +18,46 @@ def cla_parser():
         "--directory", "-d", type=str, required=True, help="Directory containing pickled RepeatLists to score"
     )
     parser.add_argument(
-        "--output", "-o", type=str, required=True, help="Directory where scored RepeatLists will be stored"
+        "--output", "-o", type=str, required=False, help="Directory where scored RepeatLists will be stored (if the same as input, files will be overwritten)"
     )
 
     return parser.parse_args()
 
+def load_repeatlists(directory):
+    # collect all pickle files from input directory
+    file_names = [i for i in os.listdir(directory) if i.endswith(".pickle")]
+    
+    for file_name in file_names:
+        full_path = os.path.join(directory, file_name)
+
+        with open(full_path, "rb") as f:
+            repeat_list = pickle.load(f)
+        
+        # Double check to see if collected object is RepeatList
+        if not isinstance(repeat_list, RepeatList):
+            continue
+        
+        yield(file_name, repeat_list)
+
 
 def main():
-    # args = cla_parser()    
-    test_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/chr1_1275436-1292029_fw.pickle"
-    test_file_longer = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/chr1_31291982-31364953_fw.pickle"
+    args = cla_parser()   
 
-    # to_skip = check_output_dir(args.output)
-    with open(test_file_longer, "rb") as f:
-        test_rlist = pickle.load(f)
-    
-    num_repeats = len(test_rlist.repeats)    
-    filt_count_1 = 0
-    filt_count_2 = 0
-    filt_count_3 = 0
+    input_dir = args.directory 
+    # if output dir was not specified, overwrite input file
+    if not args.output:
+        output_dir = args.directory
+    else:
+        output_dir = args.output
 
-    pval_1 = 0.05
-    pval_2 = 0.01
-    pval_3 = 0.001
-    for repeat in test_rlist.repeats:
-        repeat.calculate_scores(scoreslist=["phylo"])
-        repeat.calculate_pvalues(scoreslist=["phylo"])
-        if repeat.d_pvalue["phylo"] <= pval_1:
-            filt_count_1 += 1
-        if repeat.d_pvalue["phylo"] <= pval_2:
-            filt_count_2 += 1
-        if repeat.d_pvalue["phylo"] <= pval_3:
-            filt_count_3 += 1
-    
-    print("Repeats before filter: {}\nRepeats where p <= {}: {}".format(
-        num_repeats, 
-        [pval_1, pval_2, pval_3], 
-        [filt_count_1, filt_count_2, filt_count_3]))
+    for file_name, repeat_list in load_repeatlists(input_dir):
+        for repeat in repeat_list.repeats:
+            repeat.calculate_scores(scoreslist=["phylo"])
+            repeat.calculate_pvalues(scoreslist=["phylo"])
+
+        output_handle = os.path.join(output_dir, file_name)
+        repeat_list.write(output_format="pickle", file=output_handle)
+
 
 if __name__ == "__main__":
     main()
