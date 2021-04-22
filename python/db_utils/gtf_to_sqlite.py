@@ -3,6 +3,7 @@ import argparse
 import os
 
 import gtfparse
+from sqlalchemy import Index
 from sqlalchemy.engine import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import NoResultFound
@@ -137,7 +138,7 @@ def main():
     args = cla_parser()
     db_handle = args.database
     gtf_handle = args.gtf
-
+    
     # check if database exists
     if not os.path.exists(db_handle):
         raise FileNotFoundError("No DB was found at the specified handle")
@@ -146,8 +147,7 @@ def main():
         raise FileNotFoundError("No gtf file was found at the specified handle")
 
     # connect to DB, initialize and configure session
-    engine = create_engine("sqlite:///{}".format(db_handle), echo=False)
-    
+    engine = create_engine("sqlite:///{}".format(db_handle), echo=False)   
     Session = sessionmaker(bind=engine)
     session = Session()
 
@@ -158,6 +158,12 @@ def main():
     add_genes(session, gtf_df)
     add_transcripts(session, gtf_df)
     add_exons(session, gtf_df)
+
+    # add indexes to row that will likely be queried a lot
+    # Ensembl IDs for Gene, Transcript, Exon
+    Index('ensembl_gene_idx', Gene.ensembl_gene).create(engine)
+    Index('ensembl_transcript_idx', Transcript.ensembl_transcript).create(engine)
+    Index('ensembl_exon_idx', Exon.ensembl_exon).create(engine)
 
     # commit
     session.commit()

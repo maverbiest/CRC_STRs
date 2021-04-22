@@ -106,6 +106,7 @@ class Repeat(Base):
 
     id = Column(Integer, primary_key=True)   
     source = Column(String, nullable=True, default="unknown")  # e.g. which detector found this Repeat?
+    msa = Column(String, nullable=True)
     begin = Column(Integer, nullable=False)
     end = Column(Integer, nullable=False)
     l_effective = Column(Integer, nullable=False)
@@ -124,8 +125,9 @@ class Repeat(Base):
                             back_populates='repeats')
 
     def __repr__(self):
-        return "Repeat(source={}, begin={}, end={}, l_effective={}, n_effective={}, region_length={}, p_value={}, divergence={})".format(
+        return "Repeat(source={}, msa={}, begin={}, end={}, l_effective={}, n_effective={}, region_length={}, p_value={}, divergence={})".format(
             self.source,
+            self.msa,
             self.begin,
             self.end,
             self.l_effective,

@@ -27,7 +27,7 @@ def cla_parser():
         "--divergence", "-d", type=float, required=True, help="Divergence threshold (upper bound)"
     )
     parser.add_argument(
-        "--units", "-u", type=float, required=False, help="Number of repeat units required (lower bound)"
+        "--units", "-u", type=float, required=False, help="(Optional) Number of repeat units required (lower bound)"
     )
 
     return parser.parse_args()
@@ -64,7 +64,7 @@ def main():
         criterion_list = [("pvalue", "phylo"), ("divergence", "phylo")]
         repeat_list_clust = repeat_list_filt.filter("none_overlapping", ["common_ancestry"], criterion_list)
 
-        new_file_name = file_name.split(".")[0] + "_filt_noclust.pickle"
+        new_file_name = file_name.split(".")[0] + "_filt.pickle"
         output_path = os.path.join(output_dir, new_file_name)
         repeat_list_clust.write(output_format="pickle", file=output_path)        
 

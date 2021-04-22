@@ -31,7 +31,7 @@ def get_sorted_exons(session, transcript, protein_coding=False):
     if transcript.gene.strand == "fw":
         return list(sorted(exons, key=lambda x : x.begin))
     elif transcript.gene.strand == "rv":
-        return list(sorted(exons, key=lambda x : x.begin, reverse=True)) 
+        return list(sorted(exons, key=lambda x : x.begin, reverse=True))
 
 def main():
     db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_brca2.db"
@@ -39,11 +39,11 @@ def main():
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    emsembl_trans = "ENST00000380152.6"
+    # emsembl_trans = "ENST00000380152.6"
     # emsembl_trans = "ENST00000623083.2"
-    transcript = session.query(Transcript).filter_by(ensembl_transcript=emsembl_trans).one()
-    for i in get_sorted_exons(session, transcript, protein_coding=True):
-        print(i)
+    # transcript = session.query(Transcript).filter_by(ensembl_transcript=emsembl_trans).one()
+    # for i in get_sorted_exons(session, transcript, protein_coding=True):
+    #     print(i)
 
 if __name__ == "__main__":
     main()
