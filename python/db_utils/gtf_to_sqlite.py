@@ -120,15 +120,26 @@ def add_exons(session, gtf_df):
             # does the exon contain a stop codon? If so: store the first position of the stop codon
             new_exon.stop_codon = row["start"]
 
+def connection_setup(db_path):
+    # check if database exists
+    if not os.path.exists(db_path):
+        raise FileNotFoundError("No DB was found at the specified handle")
+    # connect to DB, initialize and configure session
+    engine = create_engine("sqlite:///{}".format(db_path), echo=False)   
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    return engine, session
+
 
 def cla_parser():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--database", "-d", type=str, required=True, help="Handle where the (empty) database to be populated can be found. Empty DB can be generated using 'setup_db.py'"
+        "--database", "-d", type=str, required=True, help="Path where the (empty) database to be populated can be found. Empty DB can be generated using 'setup_db.py'"
     )
     parser.add_argument(
-        "--gtf", "-g", type=str, required=True, help="Handle where the gtf file with genome annotations can be found, this will be parsed and inserted into the DB"
+        "--gtf", "-g", type=str, required=True, help="Path where the gtf file with genome annotations can be found, this will be parsed and inserted into the DB"
     )
 
     return parser.parse_args()
@@ -136,20 +147,14 @@ def cla_parser():
 
 def main():
     args = cla_parser()
-    db_handle = args.database
+    db_path = args.database
     gtf_handle = args.gtf
     
-    # check if database exists
-    if not os.path.exists(db_handle):
-        raise FileNotFoundError("No DB was found at the specified handle")
     # check if gtf file exists
     if not os.path.exists(gtf_handle):
         raise FileNotFoundError("No gtf file was found at the specified handle")
 
-    # connect to DB, initialize and configure session
-    engine = create_engine("sqlite:///{}".format(db_handle), echo=False)   
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    engine, session = connection_setup(db_path)
 
     # read in gtf file
     gtf_df = get_genome_annotations(gtf_handle, protein_coding=True)
@@ -159,8 +164,12 @@ def main():
     add_transcripts(session, gtf_df)
     add_exons(session, gtf_df)
 
+    # commit new additions to the database before adding indexes, otherwise sqlalchemy will complain
+    ## that the 'database is locked'
+    session.commit()
+
     # add indexes to row that will likely be queried a lot
-    # Ensembl IDs for Gene, Transcript, Exon
+    # ensembl ID columns for Gene, Transcript, Exon
     Index('ensembl_gene_idx', Gene.ensembl_gene).create(engine)
     Index('ensembl_transcript_idx', Transcript.ensembl_transcript).create(engine)
     Index('ensembl_exon_idx', Exon.ensembl_exon).create(engine)

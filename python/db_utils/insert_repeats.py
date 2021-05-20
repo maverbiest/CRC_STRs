@@ -2,16 +2,15 @@
 import argparse
 import os
 import sys
+currentdir = os.path.dirname(os.path.realpath(__file__))
+parentdir = os.path.dirname(currentdir)
+sys.path.append(parentdir)
 
-from sqlalchemy.engine import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import NoResultFound
-
-from setup_db import Gene, Transcript, Exon, Repeat
 from tral_pvalues import load_repeatlists
-from misc.constants import UPSTREAM
+from setup_db import Gene, Repeat
+from gtf_to_sqlite import connection_setup
 
-def get_gene_from_repeatlist(session, file_name):
+def get_gene_from_repeatlist(session, file_name, upstream=5000):
     chromosome = file_name.split("_")[0]
     if not chromosome.startswith("chr"):
         raise Exception(f"Could not determine chromosome for repeatlist from {file_name}")
@@ -24,25 +23,27 @@ def get_gene_from_repeatlist(session, file_name):
         raise Exception(f"Could not determine strand for repeatlist from file {file_name}")
 
     if strand =="fw":
-        gene_begin = int(file_name.split("_")[1].split("-")[0]) + UPSTREAM
+        gene_begin = int(file_name.split("_")[1].split("-")[0]) + upstream
         gene_end = int(file_name.split("_")[1].split("-")[1])
     else:
         ### UNTESTED CODE ###
+        #TODO test
         gene_begin = int(file_name.split("_")[1].split("-")[0])
-        gene_end = int(file_name.split("_")[1].split("-")[1]) - UPSTREAM
+        gene_end = int(file_name.split("_")[1].split("-")[1]) - upstream
 
     gene = session.query(Gene).filter_by(chromosome=chromosome, strand=strand, begin=gene_begin, end=gene_end).one()
     return gene
 
-def add_repeat(gene, repeat):
+def add_repeat(gene, repeat, upstream=5000):
     # repeat contains coordinates relative to the extracted genomic region that it was detected in
     ## thus, need to remap to chromosomal coordinates before adding to DB
     if gene.strand == "fw":
-        chrom_begin = (gene.begin - UPSTREAM) + repeat.begin - 1 # only valid for fw strand genes
+        chrom_begin = (gene.begin - upstream) + repeat.begin - 1 # only valid for fw strand genes
     else:
         ### UNTESTED CODE ###
+        #TODO test
         repeat_end = repeat.begin + repeat.repeat_region_length - 1
-        chrom_begin = (gene.end + UPSTREAM) - repeat_end + 1 # only valid for rv strand genes
+        chrom_begin = (gene.end + upstream) - repeat_end + 1 # only valid for rv strand genes
     
     # initialize instance of database Repeat
     db_repeat = Repeat(
@@ -67,21 +68,27 @@ def add_repeat(gene, repeat):
         elif db_repeat.end <= transcript.end and db_repeat.end >= transcript.begin:
             transcript.repeats.append(db_repeat)
 
+def cla_parser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--database", "-d", type=str, required=True, help="Path to where the repeat-containing database can be found"
+    )
+    parser.add_argument(
+        "--repeat_dir", "-r", type=str, required=True, help="Path to directory where pickled, scored and filtered repeats are stored"
+    )
+
+    return parser.parse_args()
+
 def main():
-    # args = cla_parser()
-    # db_handle = args.database
-    # gtf_handle = args.gtf
+    args = cla_parser()
+    db_path = args.database
+    input_path = args.repeat_dir
 
-    db_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_brca2.db"
-    input_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/selection"
-    # check if database exists
-    if not os.path.exists(db_path):
-        raise FileNotFoundError("No DB was found at the specified handle")
-
-    # connect to DB, initialize and configure session
-    engine = create_engine("sqlite:///{}".format(db_path), echo=False)   
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    # db_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_brca2.db"
+    # input_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/selection"
+    
+    engine, session = connection_setup(db_path)
 
     for file_name, repeat_list in load_repeatlists(input_path):
         if not file_name.endswith("_filt.pickle"):

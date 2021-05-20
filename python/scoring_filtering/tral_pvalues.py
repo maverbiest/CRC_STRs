@@ -18,8 +18,11 @@ def cla_parser():
         "--directory", "-d", type=str, required=True, help="Directory containing pickled RepeatLists to score"
     )
     parser.add_argument(
-        "--output", "-o", type=str, required=False, help="Directory where scored RepeatLists will be stored (if the same as input, files will be overwritten)"
+        "--model", "-m", type=str, required=True, help="Model to use for calculating pvalues. Options: phylo, phylo_gap01, phylo_gap001"
     )
+    parser.add_argument(
+        "--output", "-o", type=str, required=False, help="Directory where scored RepeatLists will be stored (if the same as input, files will be overwritten)"
+    )    
 
     return parser.parse_args()
 
@@ -50,10 +53,14 @@ def main():
     else:
         output_dir = args.output
 
+    if not args.model in {"phylo", "phylo_gap01", "phylo_gap001"}:
+        raise ValueError("Model must be one of: {phylo, phylo_gap01, phylo_gap001} ")
+    model = args.model
+
     for file_name, repeat_list in load_repeatlists(input_dir):
         for repeat in repeat_list.repeats:
-            repeat.calculate_scores(scoreslist=["phylo"])
-            repeat.calculate_pvalues(scoreslist=["phylo"])
+            repeat.calculate_scores(scoreslist=[model])
+            repeat.calculate_pvalues(scoreslist=[model])
 
         output_handle = os.path.join(output_dir, file_name)
         repeat_list.write(output_format="pickle", file=output_handle)
