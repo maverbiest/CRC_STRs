@@ -37,15 +37,17 @@ for CONFIG in \$(find \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/.tral -name config.i
 	sed -i 's|/cfs/earth/scratch/verb/localapps|'\$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/localapps'|' \$CONFIG
 done
 sed -i '/^CONFIG_DIR/s|=.*|= \"'\$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/.tral'\"|' \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/python/lib/python3.6/site-packages/tral/paths.py
-
+# sed -i '/^CONFIG_DIR/s|=.*|= "'"$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH"'/.tral"|' $LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/python/lib/python3.6/site-packages/tral/paths.py
 # copy script + input data to local scratch on node
 cp /cfs/earth/scratch/verb/projects/CRC_STRs//python/tral_detector_run_local.py \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/python/
+# cp /cfs/earth/scratch/verb/projects/CRC_STRs/data/test/fasta/tiny.fa \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/CRC_STRs/data/
 cp $PROJECT_DIR/data/partitions/part_${i}/part_${i}.fa \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/CRC_STRs/data/
 
 # change dir to local scratch on node
 cd \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH
 
 # run detection on local scratch
+# python3 python/tral_detector_run_local.py -f \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/CRC_STRs/data/tiny.fa -m ${MAX_SEQS} -g \$GLOBAL_OUTPUT -l \$LOCAL_OUTPUT 2> \$LOCAL_OUTPUT/debug.log
 python3 python/tral_detector_run_local.py -f \$LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH/CRC_STRs/data/part_${i}.fa -m ${MAX_SEQS} -g \$GLOBAL_OUTPUT -l \$LOCAL_OUTPUT 2> \$LOCAL_OUTPUT/debug.log
 
 # sync local output to global output directory

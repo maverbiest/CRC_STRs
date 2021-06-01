@@ -5,7 +5,7 @@ import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from tral_pvalues import load_repeatlists
+from scoring_filtering.tral_pvalues import load_repeatlists
 
 def cla_parser():
     parser = argparse.ArgumentParser()

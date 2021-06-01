@@ -18,7 +18,7 @@ def cla_parser():
         "--directory", "-d", type=str, required=True, help="Directory containing pickled RepeatLists to score"
     )
     parser.add_argument(
-        "--model", "-m", type=str, required=True, help="Model to use for calculating pvalues. Options: phylo, phylo_gap01, phylo_gap001"
+        "--model", "-m", type=str, required=False, help="Model to use for calculating pvalues. Options: phylo, phylo_gap01, phylo_gap001. If no model is specified, all three will be used"
     )
     parser.add_argument(
         "--output", "-o", type=str, required=False, help="Directory where scored RepeatLists will be stored (if the same as input, files will be overwritten)"
@@ -26,10 +26,15 @@ def cla_parser():
 
     return parser.parse_args()
 
-def load_repeatlists(directory):
+def load_repeatlists(directory, targets=None):
     # collect all pickle files from input directory
     file_names = [i for i in os.listdir(directory) if i.endswith(".pickle")]
-    
+
+    if targets:
+        if not isinstance(targets, (list, set, tuple)):
+            raise ValueError("Specify files to include in a list, set or tuple")
+        file_names = [i for i in file_names if i.replace(".pickle", "") in targets]
+
     for file_name in file_names:
         full_path = os.path.join(directory, file_name)
 
@@ -53,14 +58,19 @@ def main():
     else:
         output_dir = args.output
 
-    if not args.model in {"phylo", "phylo_gap01", "phylo_gap001"}:
-        raise ValueError("Model must be one of: {phylo, phylo_gap01, phylo_gap001} ")
-    model = args.model
+    
+    if args.model: # check if specified model is valid
+        if not args.model in {"phylo", "phylo_gap01", "phylo_gap001"}:
+            raise ValueError("Model must be one of: {phylo, phylo_gap01, phylo_gap001} ")
+        model_list = [args.model]
+    else: # no model specified, use all three
+        model_list = ["phylo", "phylo_gap01", "phylo_gap001"]
 
     for file_name, repeat_list in load_repeatlists(input_dir):
+        print(file_name)
         for repeat in repeat_list.repeats:
-            repeat.calculate_scores(scoreslist=[model])
-            repeat.calculate_pvalues(scoreslist=[model])
+            repeat.calculate_scores(scoreslist=model_list)
+            repeat.calculate_pvalues(scoreslist=model_list)
 
         output_handle = os.path.join(output_dir, file_name)
         repeat_list.write(output_format="pickle", file=output_handle)

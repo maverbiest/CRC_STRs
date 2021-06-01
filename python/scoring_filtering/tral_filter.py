@@ -39,45 +39,79 @@ def cla_parser():
 def filter_and_correct_tails(repeat_list, model, pval, div):
     filtered_list = []
     for repeat in repeat_list.repeats:
-        if repeat.d_pvalue[model] >= pval or repeat.d_divergence[model] >= div:
-            trailing_unit = repeat.msa[-1].replace("-", "")
+        if reject_repeat(repeat, model, pval, div):
+            # repeat is rejected, attempt to salvage by trimming gappy leading and/or trailing unit
+            leading_unit = repeat.msa[0].replace("-", "")
+            trailing_unit = repeat.msa[-1].replace("-", "")     
+
             if len(trailing_unit) <= 0.5 * repeat.l_effective and len(repeat.msa) >= 3:
-                # print(repeat, repeat.repeat_region_length)
-                trunc_repeat = Repeat(
-                    repeat.msa[0:-1],
-                    begin=repeat.begin,
-                    sequence_type="DNA",
-                    scoreslist=[model], 
-                    calc_score=True, 
-                    calc_pvalue=True
-                    )
-                # print(trunc_repeat, trunc_repeat.repeat_region_length)
-                if trunc_repeat.d_pvalue[model] < pval and trunc_repeat.d_divergence[model] < div:
-                    filtered_list.append(trunc_repeat)
-            continue
+                # trailing unit is gappy, attempt trim                
+                repeat = trim_rescore(repeat, model, to_trim="last")
+                if not reject_repeat(repeat, model, pval, div):
+                    # repeat is now significant, add and continue to next iteration to prevent further trimming
+                    filtered_list.append(repeat)                
+                    continue 
+
+            if len(leading_unit) <= 0.5 * repeat.l_effective and len(repeat.msa) >= 3:
+                # leading unit is gappy, attempt trim
+                repeat = trim_rescore(repeat, model, to_trim="first")
+                if not reject_repeat(repeat, model, pval, div):
+                    # repeat is now significant, add to filtered list
+                    filtered_list.append(repeat) 
+            continue # continue to next iteration, otherwise rejected repeats will be appended below        
+        # repeat is significant without need for trimming, add to filtered list
         filtered_list.append(repeat)
+    
     return filtered_list
+
+def reject_repeat(repeat, model, pvalue, divergence):
+    """return True if repeat divergence and pvalue are below thresholds, False otherwise"""
+    if repeat.d_pvalue[model] >= pvalue or repeat.d_divergence[model] >= divergence:
+        return True
+    return False
+
+def trim_rescore(repeat, model, to_trim):
+    if not to_trim in {"first", "last"}:
+        raise ValueError("Can only accepted 'first' or 'last' position to trim")
+
+    if to_trim == "first":
+        # new_msa is old msa without fist unit, update begin value to account for this
+        new_msa = repeat.msa_original[1:]
+        new_begin = repeat.begin + len(repeat.msa_original[0].replace("-", ""))
+    elif to_trim == "last":
+        # new_msa is old msa without last unit, begin value stays the same
+        new_msa = repeat.msa_original[0:-1]
+        new_begin = repeat.begin
+
+    # construct new, trimmed Repeat
+    trimmed_repeat = Repeat(
+        new_msa,
+        begin=new_begin,
+        sequence_type="DNA",
+        scoreslist=[model], 
+        calc_score=True, 
+        calc_pvalue=True
+        )
+    trimmed_repeat.msa_original = trimmed_repeat.msa
+
+    return trimmed_repeat
+
 
 def main():
     args = cla_parser()
 
     input_dir = args.input 
     output_dir = args.output
+    model = args.model
     # input_dir = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/localscratch"
     # output_dir = "/tmp"    
-    for file_name, repeat_list in load_repeatlists(input_dir):
-        repeat_list_filt = RepeatList(filter_and_correct_tails(repeat_list, model="phylo_gap01", pval=0.05, div=0.01))
-        
-        # filter out repeats that do not pass thresholds for pvalue and divergence
-        # repeat_list_filt = repeat_list.filter(
-        #     "pvalue", 
-        #     args.model,
-        #     args.pvalue)
+    # model = "phylo_gap01"
 
-        # repeat_list_filt = repeat_list_filt.filter(
-        #     "divergence",
-        #     args.model,
-        #     args.divergence)
+    with open("/cfs/earth/scratch/verb/projects/CRC_STRs/results/repeats/tmp.txt", "r") as f:
+        targets = [line.strip().replace(".pickle", "") for line in f]
+        
+    for file_name, repeat_list in load_repeatlists(input_dir, targets=targets):
+        repeat_list_filt = RepeatList(filter_and_correct_tails(repeat_list, model=model, pval=0.05, div=0.01))
     
         # optional: filtering for number of repeat units
         if args.units:            
@@ -90,7 +124,7 @@ def main():
         # Clustering
         # De novo repeats are clustered for overlap (common ancestry). In case of overlap, best repeat
         # (i.e. lowest p-value and lowest divergence) is retained.
-        criterion_list = [("pvalue", args.model), ("divergence", args.model)]
+        criterion_list = [("pvalue", model), ("divergence", model)]
         repeat_list_clust = repeat_list_filt.filter("none_overlapping", ["common_ancestry"], criterion_list)
 
         new_file_name = file_name.split(".")[0] + "_filt.pickle"
