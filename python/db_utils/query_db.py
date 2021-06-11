@@ -33,6 +33,7 @@ def get_sorted_exons(session, transcript, protein_coding=False):
     elif transcript.gene.strand == "rv":
         return list(sorted(exons, key=lambda x : x.begin, reverse=True))
 
+
 def main():
     db_handle = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_brca2.db"
     engine = create_engine("sqlite:///{}".format(db_handle), echo=False)

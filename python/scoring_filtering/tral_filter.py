@@ -92,7 +92,8 @@ def trim_rescore(repeat, model, to_trim):
         calc_score=True, 
         calc_pvalue=True
         )
-    trimmed_repeat.msa_original = trimmed_repeat.msa
+    trimmed_repeat.TRD = repeat.TRD
+    trimmed_repeat.msa_original = trimmed_repeat.msa    
 
     return trimmed_repeat
 

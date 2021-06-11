@@ -22,7 +22,6 @@ def get_genome_annotations(gtf_handle, protein_coding=True):
 
     return gtf_df
 
-
 def add_genes(session, gtf_df):
     """ Get desired field values for all genes from a gtf data frame. For each gene in the gtf file,
     create a Gene instance. Finally, add all encountered Genes to the session
@@ -52,7 +51,6 @@ def add_genes(session, gtf_df):
         gene_list.append(gene)
 
     session.add_all(gene_list)
-
 
 def add_transcripts(session, gtf_df):
     """ Get desired field values for all transcripts from a gtf data frame, add them to their respective
@@ -130,7 +128,6 @@ def connection_setup(db_path):
     session = Session()
 
     return engine, session
-
 
 def cla_parser():
     parser = argparse.ArgumentParser()

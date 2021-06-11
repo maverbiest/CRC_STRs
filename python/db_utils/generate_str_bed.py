@@ -6,7 +6,7 @@ from setup_db import Gene
 from gtf_to_sqlite import connection_setup
 
 def make_str_bed(session, output_file, autosomes=True):
-    """ Probalby veeery inefficient as we go per chromosome, then sort the Genes and then also
+    """ Veeery inefficient as we go per chromosome, then sort the Genes and then also
     sort the Repeats. However, it will result in a nicely ordered .bed file and this is likely only
     done once for a database
     """

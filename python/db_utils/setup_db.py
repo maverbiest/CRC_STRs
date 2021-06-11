@@ -112,6 +112,8 @@ class Repeat(Base):
     l_effective = Column(Integer, nullable=False)
     n_effective = Column(Integer, nullable=False)
     region_length = Column(Integer, nullable=False)
+    score_type = Column(String, nullable=False)
+    score = Column(Float, nullable=False)
     p_value = Column(Float, nullable=False)
     divergence = Column(Float, nullable=False)
 
@@ -125,7 +127,7 @@ class Repeat(Base):
                             back_populates='repeats')
 
     def __repr__(self):
-        return "Repeat(source={}, msa={}, begin={}, end={}, l_effective={}, n_effective={}, region_length={}, p_value={}, divergence={})".format(
+        return "Repeat(source={}, msa={}, begin={}, end={}, l_effective={}, n_effective={}, region_length={}, score_type={}, score={}, p_value={}, divergence={})".format(
             self.source,
             self.msa,
             self.begin,
@@ -133,6 +135,8 @@ class Repeat(Base):
             self.l_effective,
             self.n_effective,
             self.region_length,
+            self.score_type,
+            self.score,
             self.p_value,
             self.divergence
         )
@@ -145,7 +149,7 @@ def cla_parser():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--database", "-d", type=str, required=True, help="Handle where the (empty) database will be generated. Database can be populated using 'populate_db.py'"
+        "--database", "-d", type=str, required=True, help="Handle where the (empty) database will be generated. Database can be populated using 'gtf_to_sqlite.py'"
     )
 
     return parser.parse_args()
