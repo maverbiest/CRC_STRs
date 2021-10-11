@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-import argparse
+import sys
 import os
+try:
+    local_scratch = os.environ["LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH"]
+    sys.path.insert(0, os.path.join(local_scratch, "python/lib/python3.6/site-packages/"))
+except KeyError:
+    pass
+import argparse
+import time
+import shutil
 
 from tral.sequence.sequence import Sequence
 from tral.repeat.repeat import Repeat
+import tral.repeat_list.repeat_list as repeat_list
 import tral.repeat.repeat_align as repeat_realign
 from tral.hmm.hmm import HMM
 from tral.hmm import hmm_viterbi
@@ -11,6 +20,7 @@ from Bio import SeqIO
 import numpy as np
 
 from tral_pvalues import load_repeatlists
+from tral_filter import filter_and_correct_tails
 
 def cla_parser():
     parser = argparse.ArgumentParser()
@@ -22,13 +32,28 @@ def cla_parser():
         "--fasta_file", "-f", type=str, required=True, help="Fasta file containing the sequence that the TRs originate from. Fasta file is expected to contain multiple sequences, out of which the one matching the repeatlist will be selected"
     )
     parser.add_argument(
-        "--score_type", "-s", type=str, required=True, help="Type of score to use"
+        "--score_type", "-s", type=str, required=True, help="Type of score to use options: phylo, phylo_gap01, phylo_gap001"
+    )
+    parser.add_argument(
+        "--pvalue", "-p", type=float, default=0.05, help="P value threshold for accepting HMM refined repeats (upper bound)"
+    )
+    parser.add_argument(
+        "--divergence", "-d", type=float, default=0.1, help="Divergence threshold for accepting HMM refined repeats (upper bound)"
+    )
+    parser.add_argument(
+        "--max_seqs", "-m", type=int, default=False, help="Maximum number of sequences from the fasta file that will be analyzed"
+    )
+    parser.add_argument(
+        "--global_output_dir", "-g", type=str, required=True, help="Path to directory where output TRs will be deposited"
+    )
+    parser.add_argument(
+        "--local_output_dir", "-l", type=str, required=False, help="If running on cluster node with local scratch, TRs will initially be deposited here before they are rsync'ed to global storage"
     )
     
 
     return parser.parse_args()
 
-def refine_repeatlist(seq, tag, score, seq_type):
+def refine_repeatlist(seq, tag, score_type, seq_type, pval, div):
     """ Take a sequence with one or more repeat lists associated to it, and a tag specifying repeat list of interest
     (one sequence can have multiple repeat lists associated to it, each identifiable with a tag). Then, create a cpHMM
     for each tandem repeat, detect TRs in sequence again and see if this improves (refines) the de novo TR
@@ -36,49 +61,117 @@ def refine_repeatlist(seq, tag, score, seq_type):
     seq (tral.sequence.Sequence):
                     A sequence with one or more RepeatLists associated to it    
     tag (str):      Which RepeatList associated to seq should be used?
-    score (str):    Score used to evaluate TRs
+    score_type (str):    
+                    Score used to evaluate TRs
+    seq_type (str): Are we analyzing DNA or protein sequence?
 
     Returns
     refined_list (list):
                     A list containing HMM refined tandem repeats
     """
-    refined_list = []
-    skipped_count, realigned_count = 0, 0
+    if not score_type in {"phylo", "phylo_gap01", "phylo_gap001"}:
+        raise ValueError("Options for score_type: phylo, phylo_gap01, phylo_gap001")
+    if not seq_type in {"DNA", "AA"}:
+        raise ValueError("Options for seq_type: DNA, AA")
 
-    print(f"Length of sequence {len(seq.seq)}")
+    refined_list = repeat_list.RepeatList(repeats=[])
+    skipped_count, realigned_count, use_refined_count = 0, 0, 0
+
+    print(f"Length of sequence: {len(seq.seq)}")
     print(f"Total number of repeats in RepeatList: {len(seq.get_repeatlist(tag).repeats)}")
-    for TR in seq.get_repeatlist(tag).repeats:
-        use_refined = False
-        denovo_hmm = HMM.create(input_format='repeat', repeat=TR)
-        most_likely_path = denovo_hmm.viterbi(seq.seq)
-        if not most_likely_path:
+    # print("WARNING, RUNNING SCRIPT IN 'SALVAGE MODE': skipping everything except where no unaligned msa is found!!!")
+    for counter, repeat in enumerate(seq.get_repeatlist(tag).repeats):  
+        # print(f"Working on repeat number: {counter + 1}", end="\r")
+        # if repeat.l_effective > 15:
+        #     continue              
+        denovo_hmm = HMM.create(input_format='repeat', repeat=repeat)    
+
+        repeat_begin, unaligned_msa = get_unaligned_msa(repeat, denovo_hmm, seq)
+        if not unaligned_msa:
+            refined_list.repeats.append(repeat)
+            skipped_count += 1
+            continue        
+        # continue
+
+        if new_units_same_as_old(repeat, unaligned_msa):               
+            refined_list.repeats.append(repeat)
+            skipped_count += 1
             continue
 
-        unaligned_msa = hmm_viterbi.hmm_path_to_non_aligned_tandem_repeat_units(
-                    seq.seq,
-                    most_likely_path,
-                    denovo_hmm.l_effective)
-
-        if new_units_same_as_old(TR, unaligned_msa):
-            skipped_count += 1            
-            print(TR)
-            print("Use old!")
-            print(unaligned_msa)
-            continue
-
-        # skip_realign, checked_msa = skip_realign_current_check(unaligned_msa)
-        skip_realign, checked_msa = skip_realign_new_check(unaligned_msa)        
+        skip_realign, filled_msa = skip_realign_new_check(unaligned_msa)        
         if not skip_realign:
-            realigned_count += 1
-            # checked_msa = repeat_realign.realign_repeat(checked_msa,
-            #                                             "mafft",
-            #                                             "DNA")
-        else:
-            print(TR)
-            print(checked_msa)
-            skipped_count += 1        
+            realigned_msa = repeat_realign.realign_repeat(filled_msa,
+                                                        "mafft",
+                                                        seq_type)
+            hmm_repeat = Repeat(begin=repeat_begin, msa=realigned_msa)
+            realigned_count += 1            
+        else:            
+            hmm_repeat = Repeat(begin=repeat_begin, msa=filled_msa)
+            skipped_count += 1  
         
-    print(f"skipped: {skipped_count}, realigned: {realigned_count}")
+        if hasattr(repeat, "TRD"):
+            hmm_repeat.TRD = repeat.TRD
+        else:
+            hmm_repeat.TRD = None
+        hmm_repeat.model = "cpHMM"
+        hmm_repeat.calculate_scores(scoreslist=[score_type])
+        hmm_repeat.calculate_pvalues(scoreslist=[score_type])
+        seq.repeat_in_sequence(hmm_repeat)
+        
+        try:
+            hmm_repeat_filtered = filter_and_correct_tails(repeat_list.RepeatList([hmm_repeat]), model=score_type, pval=pval, div=div)[0]
+            if repeat_list.two_repeats_overlap(
+                    "shared_char",
+                    repeat,
+                    hmm_repeat_filtered):
+                refined_list.repeats.append(hmm_repeat_filtered)
+                use_refined_count += 1
+                # continue to next iteration otherwise old repeat will be added to refined list below
+                continue 
+        except IndexError:
+            # HMM repeat was rejected based on pvalue or divergence threshold  
+            pass
+        refined_list.repeats.append(repeat)
+                  
+    print(f"skipped: {skipped_count}, realigned: {realigned_count}, used refined: {use_refined_count}")
+
+    # Clustering
+    # HMM repeats are clustered for overlap (common ancestry). In case of overlap, best repeat
+    # (i.e. lowest p-value and lowest divergence) is retained.
+    criterion_list = [("pvalue", score_type), ("divergence", score_type)]
+    refined_list = refined_list.filter("none_overlapping", ["common_ancestry"], criterion_list)
+
+    # print(f"Number of repeats after refinement and reclustering: {len(refined_list.repeats)}", end="\r")
+
+    return refined_list
+
+def get_unaligned_msa(repeat, denovo_hmm, seq, units_before=10, units_after=10):
+    update_window = True
+    while update_window:                     
+        slice_index, seq_slice = get_subsequence(sequence=seq, repeat=repeat, before=units_before, after=units_after)                    
+        most_likely_path = denovo_hmm.viterbi(seq_slice.seq)        
+        if not most_likely_path:
+            return None, None
+        slice_match_index = path_match_indices(most_likely_path)
+        
+        if len(seq_slice.seq) == len(seq.seq):
+            break
+
+        update_window = False   
+        if slice_match_index[0] == 0 and not slice_index[0] == 0:
+            units_before += 10
+            update_window = True
+        if slice_match_index[1] == len(seq_slice.seq) - 1 and not slice_index[1] == len(seq.seq) - 1:
+            units_after += 10
+            update_window = True
+      
+    repeat_begin = slice_index[0] + slice_match_index[0] + 1                 
+
+    unaligned_msa = hmm_viterbi.hmm_path_to_non_aligned_tandem_repeat_units(
+                seq_slice.seq,
+                most_likely_path,
+                denovo_hmm.l_effective)
+    return repeat_begin, unaligned_msa
 
 def skip_realign_current_check(msa):
     length_tuple = (len(unit) for unit in msa)
@@ -90,22 +183,18 @@ def skip_realign_current_check(msa):
 
 def skip_realign_new_check(msa):
     length_tuple = tuple((len(unit) for unit in msa))
+    msa = fill_out_msa_units(msa, max(length_tuple)) 
 
-    if check_if_homogeneous(msa):
-        return True, fill_out_msa_units(msa, max(length_tuple))
-    
-    msa = fill_out_msa_units(msa, max(length_tuple))
-
-    # existing check in TRAL
-    if len(msa) <= 2 and len(msa[0]) <= 10:
-        return True, msa
-    
     # are all units of length 1?
     if len(msa[0]) == 1:
         return True, msa
 
-    # are all units of the same length?
-    if len(set(length_tuple)) == 1:
+    # existing check in TRAL: is repeat made up of 2 units and are they length 10 or shorter?
+    if len(msa) <= 2 and len(msa[0]) <= 10:
+        return True, msa    
+
+    # is the naive alignment already optimal?
+    if check_if_homogeneous(msa):
         return True, msa
 
     return False, msa
@@ -131,43 +220,106 @@ def new_units_same_as_old(unrefined_repeat, hmm_msa):
     return True
 
 def check_if_homogeneous(msa):
-    ### WORK IN PROGRESS ###
-    array = np.array([list(unit) for unit in msa], dtype=object).transpose()
-    array = array.transpose()
-    unique_chars_per_col = tuple((len(set("".join(col))) for col in array))
-    # unique_chars_per_col = tuple((len(set("".join(char))) for char in zip(*msa)))
-    return all(i == 1 for i in unique_chars_per_col)
+    # For each column in the transposed MSA, transform the list of characters into a set of unique
+    # characters (excluding gaps) in that column in the following steps: 
+    # ['A', 'A', 'A', '-'] -> {'A', '-'} -> {'A'}
+    msa_columns = np.array([list(unit) for unit in msa], dtype=object).transpose()
+    
+    unique_chars_per_col = tuple(set(col) for col in msa_columns)
+    for i in unique_chars_per_col:
+        i.discard("-")
+
+    # If all sets contain only one character it means all columns in the MSA are homogeneous -> return True and skip realignment
+    return all(len(col) == 1 for col in unique_chars_per_col)
+
+def get_subsequence(sequence, repeat, before, after):
+    begin_index = max(
+        repeat.begin - 1 - (before * repeat.l_effective),
+        0)
+    end_index = min(
+        repeat.begin - 1 + repeat.repeat_region_length + (after * repeat.l_effective),
+        len(sequence.seq) - 1)
+
+    return (begin_index, end_index), Sequence(sequence.seq[begin_index : end_index + 1], sequence_type=sequence.sequence_type)
+
+def path_match_indices(path):
+    begin = None
+    for i, char in enumerate(path):
+        if begin is None and char != "N":
+            begin = i
+        if char == "C":
+            return (begin, i)
+    return (begin, i)
 
 
 def main():
-    # args = cla_parser()
+    args = cla_parser()
 
     # repeat_dir = args.repeat_dir
     # fasta_file = args.fasta_file
     # score_type = args.score_type
 
-    repeat_dir = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/refining/repeats/"
-    fasta_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/refining/seqs/tiny.fa"
-    score_type = "phylo_gap01"
+    # repeat_dir = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/refining/repeats/"
+    # fasta_file = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/refining/seqs/tiny.fa"
+    # score_type = "phylo_gap01"
 
-    for file_name, repeatlist in load_repeatlists(repeat_dir):
+    seq_dict = dict()
+    seq_parser = SeqIO.parse(args.fasta_file, "fasta")
+    for record in seq_parser:       
+        try: 
+            # seq = Sequence(seq=str(record.seq), name=record.id, sequence_type="DNA")
+            # seq_dict[seq.name] = seq
+            seq_dict[record.id] = record
+        except KeyError:
+            raise Exception(f"During making of sequence for: {record.id}")
+
+    finished_sequences = {i.replace("_refined.pickle", "") for i in os.listdir(args.global_output_dir) if i.endswith("_refined.pickle")}
+    # finished_sequences = {i.replace("_refined", "") for i in check_output_dir(args.global_output_dir)}
+
+    seq_counter = 0
+    for file_name, repeatlist in load_repeatlists(args.repeat_dir):                        
         seq_of_origin = file_name.replace(".pickle", "")
-        if "_filt" in seq_of_origin:
-            seq_of_origin = seq_of_origin.replace("_filt", "")
+        seq_of_origin = seq_of_origin.replace("_filt", "") # may or may not be present in file name
+        if seq_of_origin in finished_sequences:
+            continue
 
-        seq_parser = SeqIO.parse(fasta_file, "fasta")
-        for record in seq_parser:
-            if record.id == seq_of_origin:
-                seq = Sequence(seq=str(record.seq), name=seq_of_origin, sequence_type="DNA")
-                break
-        
-        seq.set_repeatlist(repeatlist, "unrefined")
-        refined_list = refine_repeatlist(
-            seq, 
-            "unrefined",
-            score_type, 
-            "DNA"
+        print(f"Starting HMM refinement of RepeatList originating from {seq_of_origin}")
+        seq_counter += 1
+
+        try:
+            current_seq = seq_dict[seq_of_origin]
+            current_seq = Sequence(
+                seq=str(current_seq.seq),
+                name=current_seq.id,
+                sequence_type="DNA"
             )
+        except KeyError:
+            print(f"WARNING!!! No sequence was found in fasta file for RepeatList originating from {seq_of_origin}, skipping analysis!\n")
+            continue
+
+        current_seq.set_repeatlist(repeatlist, "unrefined")
+        start = time.time()
+        refined_list = refine_repeatlist(
+            seq=current_seq, 
+            tag="unrefined",
+            score_type=args.score_type, 
+            seq_type="DNA",
+            pval=args.pvalue,
+            div=args.divergence
+            )  
+        print(f"Refining Repeats took {time.time() - start} seconds\n")     
+
+        output_file_name = os.path.join(args.local_output_dir, f"{current_seq.name}_refined.pickle")
+        refined_list.write(output_format="pickle", file=output_file_name)
+
+        local_scratch = os.environ['LSFM_CLUSTER_LOCAL_SCRATCH_JOB_PATH']
+        for item in os.listdir(local_scratch):
+            if item.startswith("tmp"):
+                shutil.rmtree(os.path.join(local_scratch, item))
+
+        if args.max_seqs:
+            if seq_counter == args.max_seqs:
+                break
 
 if __name__ == "__main__":
     main()

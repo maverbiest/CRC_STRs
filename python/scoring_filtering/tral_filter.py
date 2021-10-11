@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Collect repeatlists from a directory and filter the associated repeats based on command line arguments.
-The fitlered repeatlists will then be serialized to a new output location.
+The filtered repeatlists will then be serialized to a new output location.
 """
 
 import argparse
 import os
 
 from tral.repeat.repeat import Repeat
-from tral.repeat_list.repeat_list import RepeatList
+from tral.repeat_list.repeat_list import RepeatList, pvalue
 
 from tral_pvalues import load_repeatlists
 
@@ -31,7 +31,10 @@ def cla_parser():
         "--divergence", "-d", type=float, required=True, help="Divergence threshold (upper bound)"
     )
     parser.add_argument(
-        "--units", "-u", type=float, required=False, help="(Optional) Number of repeat units required (lower bound)"
+        "--units", "-u", type=float, required=False, help="(Optional) Number of repeat units required (lower bound, inclusive)"
+    )
+    parser.add_argument(
+        "--unit_len", "-l", type=int, required=False, help="(Optional) Minimum unit length number (lower bound, inclusive)"
     )
 
     return parser.parse_args()
@@ -76,11 +79,11 @@ def trim_rescore(repeat, model, to_trim):
 
     if to_trim == "first":
         # new_msa is old msa without fist unit, update begin value to account for this
-        new_msa = repeat.msa_original[1:]
-        new_begin = repeat.begin + len(repeat.msa_original[0].replace("-", ""))
+        new_msa = repeat.msa[1:]
+        new_begin = repeat.begin + len(repeat.msa[0].replace("-", ""))
     elif to_trim == "last":
         # new_msa is old msa without last unit, begin value stays the same
-        new_msa = repeat.msa_original[0:-1]
+        new_msa = repeat.msa[0:-1]
         new_begin = repeat.begin
 
     # construct new, trimmed Repeat
@@ -99,28 +102,44 @@ def trim_rescore(repeat, model, to_trim):
 
 
 def main():
+    # input_dir = "/cfs/earth/scratch/verb/projects/dopamine_transporter_repeats/results/human/raw"
+    # for file_name, repeat_list in load_repeatlists(input_dir): 
+    #     print(file_name)
+    #     continue
+    # exit()
     args = cla_parser()
 
     input_dir = args.input 
     output_dir = args.output
     model = args.model
+    pvalue = args.pvalue
+    divergence = args.divergence    
     # input_dir = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/localscratch"
     # output_dir = "/tmp"    
     # model = "phylo_gap01"
 
-    with open("/cfs/earth/scratch/verb/projects/CRC_STRs/results/repeats/tmp.txt", "r") as f:
-        targets = [line.strip().replace(".pickle", "") for line in f]
+    # with open("/cfs/earth/scratch/verb/projects/CRC_STRs/results/repeats/tmp.txt", "r") as f:
+    #     targets = [line.strip().replace(".pickle", "") for line in f]
         
-    for file_name, repeat_list in load_repeatlists(input_dir, targets=targets):
-        repeat_list_filt = RepeatList(filter_and_correct_tails(repeat_list, model=model, pval=0.05, div=0.01))
+    for file_name, repeat_list in load_repeatlists(input_dir):        
     
         # optional: filtering for number of repeat units
         if args.units:            
-            repeat_list_filt = repeat_list_filt.filter(
+            repeat_list = repeat_list.filter(
                 "attribute",
                 "n_effective",
                 "min",
                 args.units)
+
+        # optional: filtering for unit length
+        if args.unit_len:
+            repeat_list = repeat_list.filter(
+                "attribute",
+                "l_effective",
+                "min",
+                args.unit_len)            
+
+        repeat_list_filt = RepeatList(filter_and_correct_tails(repeat_list, model=model, pval=pvalue, div=divergence))
 
         # Clustering
         # De novo repeats are clustered for overlap (common ancestry). In case of overlap, best repeat
@@ -128,7 +147,7 @@ def main():
         criterion_list = [("pvalue", model), ("divergence", model)]
         repeat_list_clust = repeat_list_filt.filter("none_overlapping", ["common_ancestry"], criterion_list)
 
-        new_file_name = file_name.split(".")[0] + "_filt.pickle"
+        new_file_name = file_name.replace(".pickle", "_filt.pickle")
         output_path = os.path.join(output_dir, new_file_name)
         repeat_list_clust.write(output_format="pickle", file=output_path)        
 

@@ -113,7 +113,7 @@ def main():
         args = cla_parser()
         detect_trs(args.fasta_file, args.output_dir)
     except:
-        test_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/fasta/tiny.fa"
+        test_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/refining/seqs/tiny.fa"
         # test_path = "/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/avg_protein_coding_gene.fa"
         test_output = "/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/"
         detectors = ["TRF", "XSTREAM", "Phobos"]

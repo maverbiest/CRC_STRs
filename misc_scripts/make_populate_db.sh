@@ -2,7 +2,7 @@
 
 DATABASE_PATH="/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_brca2_M.db"
 GTF_PATH="/cfs/earth/scratch/verb/projects/CRC_STRs/data/test/genome_annot/gencode_small_brca2_M.gtf"
-REPEAT_DIR="/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/repeats/insert_test/"
+REPEAT_DIR="/cfs/earth/scratch/verb/projects/CRC_STRs/results/test/db/test_data"
 
 echo "Generating DataBase here: ${DATABASE_PATH}";
 python3 /cfs/earth/scratch/verb/projects/CRC_STRs/python/db_utils/setup_db.py \

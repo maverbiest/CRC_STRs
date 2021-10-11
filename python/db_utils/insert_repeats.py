@@ -65,7 +65,7 @@ def add_repeat(gene, repeat, score_type, upstream=UPSTREAM):
     # initialize instance of database Repeat
     db_repeat = Repeat(
         source = repeat.TRD,
-        msa = ",".join(repeat.msa_original), # convert msa from list() to ',' separated str()
+        msa = ",".join(repeat.msa), # convert msa from list() to ',' separated str()
         begin = chrom_begin,
         end = chrom_begin + repeat.repeat_region_length - 1, # calculate end position
         l_effective = repeat.l_effective,
@@ -117,8 +117,8 @@ def main():
     engine, session = connection_setup(db_path)
 
     for file_name, repeat_list in load_repeatlists(input_path):
-        if not file_name.endswith("_filt.pickle"):
-            continue
+        # if not file_name.endswith("_filt.pickle"):
+        #     continue
         # retrieve the Gene that the repeat_list belongs to
         try:
             gene = get_gene_from_repeatlist(session, file_name)
